@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from 'react';
@@ -20,10 +21,27 @@ import { mainNavItems, settingsNavItem } from '@/config/nav';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, Mail, MessageSquareText } from 'lucide-react';
+import { LogOut, MessageSquareText, Send } from 'lucide-react'; // Added Send icon
+import { useToast } from "@/hooks/use-toast"; // Added useToast
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { toast } = useToast();
+
+  const handleTelegramLogin = () => {
+    toast({
+      title: "Login con Telegram",
+      description: "Questa funzionalità non è ancora implementata.",
+    });
+  };
+
+  const handleLogout = () => {
+    // Placeholder for logout functionality
+    toast({
+      title: "Logout",
+      description: "Funzionalità di logout non ancora implementata.",
+    });
+  };
 
   return (
     <SidebarProvider defaultOpen={true} open={true}>
@@ -82,19 +100,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src="https://placehold.co/100x100.png" alt="@shadcn" data-ai-hint="user avatar" />
+                    <AvatarImage src="https://placehold.co/100x100.png" alt="User avatar" data-ai-hint="user avatar" />
                     <AvatarFallback>TP</AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuLabel>Il Mio Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem>Billing</DropdownMenuItem>
-                <DropdownMenuItem asChild><Link href="/settings">Settings</Link></DropdownMenuItem>
+                <DropdownMenuItem>Profilo</DropdownMenuItem>
+                <DropdownMenuItem>Fatturazione</DropdownMenuItem>
+                <DropdownMenuItem asChild><Link href="/settings">Impostazioni</Link></DropdownMenuItem>
+                <DropdownMenuItem onClick={handleTelegramLogin}>
+                  <Send className="mr-2 h-4 w-4" />
+                  <span>Accedi con Telegram</span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem>
