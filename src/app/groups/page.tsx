@@ -39,7 +39,7 @@ export default function GroupsPage() {
       return;
     }
     setIsLoading(true);
-    // Simulate API call
+    // Simulate API call to search Telegram groups
     setTimeout(() => {
       const filteredGroups = allMockGroups.filter(group =>
         group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -54,24 +54,24 @@ export default function GroupsPage() {
     // Simulate joining group
     setSubscribedGroups(prev => new Set(prev).add(group.id));
     toast({
-      title: "Iscrizione Richiesta",
-      description: `Richiesta di iscrizione al gruppo "${group.name}" inviata. (Azione simulata)`,
+      title: "Richiesta di Iscrizione Inviata",
+      description: `La tua richiesta di iscriverti al gruppo Telegram "${group.name}" è stata inviata. (Azione simulata)`,
     });
   };
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold tracking-tight">Scopri e Unisciti ai Gruppi</h1>
+      <h1 className="text-3xl font-bold tracking-tight">Trova e Unisciti a Gruppi Telegram</h1>
 
       <Card>
         <CardHeader>
-          <CardTitle>Cerca Gruppi</CardTitle>
-          <CardDescription>Trova gruppi Telegram a cui unirti.</CardDescription>
+          <CardTitle>Cerca Gruppi su Telegram</CardTitle>
+          <CardDescription>Inserisci nome o parole chiave per trovare gruppi Telegram a cui unirti.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row gap-2">
           <Input
             type="text"
-            placeholder="Cerca gruppi per nome o descrizione..."
+            placeholder="Cerca gruppi Telegram per nome o descrizione..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -79,7 +79,7 @@ export default function GroupsPage() {
           />
           <Button onClick={handleSearch} disabled={isLoading}>
             <Search className="mr-2 h-4 w-4" />
-            {isLoading ? "Ricerca..." : "Cerca"}
+            {isLoading ? "Ricerca su Telegram..." : "Cerca"}
           </Button>
         </CardContent>
       </Card>
@@ -108,7 +108,7 @@ export default function GroupsPage() {
                   {subscribedGroups.has(group.id) ? (
                     <>
                       <CheckCircle className="mr-2 h-4 w-4" />
-                      Iscritto
+                      Richiesta Inviata
                     </>
                   ) : (
                     "Iscriviti al Gruppo"
@@ -122,14 +122,15 @@ export default function GroupsPage() {
 
       {!isLoading && searchQuery && searchResults.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-lg text-muted-foreground">Nessun gruppo trovato per "{searchQuery}". Prova con un'altra ricerca.</p>
+          <p className="text-lg text-muted-foreground">Nessun gruppo Telegram trovato per "{searchQuery}". Prova con un'altra ricerca.</p>
         </div>
       )}
        {!isLoading && !searchQuery && searchResults.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-lg text-muted-foreground">Inserisci un termine di ricerca per trovare gruppi.</p>
+          <p className="text-lg text-muted-foreground">Inserisci un termine di ricerca per trovare gruppi su Telegram.</p>
         </div>
       )}
     </div>
   );
 }
+
