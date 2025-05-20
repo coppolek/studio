@@ -1,11 +1,12 @@
+
 "use client";
 
 import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart, LineChart, TrendingUp, MessageSquare, Users } from "lucide-react";
-import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
+import { BarChart as BarChartIcon, LineChart as LineChartIconProp, TrendingUp, MessageSquare, Users } from "lucide-react"; // Renamed LineChart import to avoid conflict
+import { Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, BarChart, LineChart } from 'recharts';
 
 const mockGroupChannelData = {
   "group-1": {
@@ -52,7 +53,6 @@ export default function AnalyticsPage() {
 
   const currentData = mockGroupChannelData[selectedGroup as keyof typeof mockGroupChannelData] || mockGroupChannelData["group-1"];
   
-  // Adjust data based on time window (simplified)
   const getTimeWindowMultiplier = (tw: string) => {
     if (tw === "30d") return 4;
     if (tw === "90d") return 12;
@@ -131,8 +131,8 @@ export default function AnalyticsPage() {
 
       <Tabs defaultValue="message-stats">
         <TabsList className="grid w-full grid-cols-2 md:w-[400px]">
-          <TabsTrigger value="message-stats"><BarChart className="mr-2 h-4 w-4 inline-block" />Message Stats</TabsTrigger>
-          <TabsTrigger value="engagement-trends"><TrendingUp className="mr-2 h-4 w-4 inline-block" />Engagement Trends</TabsTrigger>
+          <TabsTrigger value="message-stats"><BarChartIcon className="mr-2 h-4 w-4 inline-block" />Message Stats</TabsTrigger>
+          <TabsTrigger value="engagement-trends"><LineChartIconProp className="mr-2 h-4 w-4 inline-block" />Engagement Trends</TabsTrigger>
         </TabsList>
         <TabsContent value="message-stats">
           <Card>
@@ -141,7 +141,7 @@ export default function AnalyticsPage() {
               <CardDescription>Number of messages sent over the selected period for {currentData.name}.</CardDescription>
             </CardHeader>
             <CardContent className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer key={`${selectedGroup}-${selectedTimeWindow}-messages`} width="100%" height="100%">
                 <BarChart data={displayMessageStats}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="date" tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} stroke="hsl(var(--muted-foreground))" />
@@ -166,7 +166,7 @@ export default function AnalyticsPage() {
               <CardDescription>Engagement rate (%) for {currentData.name}.</CardDescription>
             </CardHeader>
             <CardContent className="h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer key={`${selectedGroup}-${selectedTimeWindow}-engagement`} width="100%" height="100%">
                 <LineChart data={displayEngagement}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="date" tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} stroke="hsl(var(--muted-foreground))" />
@@ -187,3 +187,5 @@ export default function AnalyticsPage() {
     </div>
   );
 }
+
+    
