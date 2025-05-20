@@ -7,24 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Users, CheckCircle } from "lucide-react";
+import { Search, Users, CheckCircle, AlertTriangle } from "lucide-react";
 import Image from "next/image";
-
-interface MockGroup {
-  id: string;
-  name: string;
-  memberCount: number;
-  description: string;
-  avatarUrl: string;
-}
-
-const allMockGroups: MockGroup[] = [
-  { id: "group1", name: "Tech Innovators Forum", memberCount: 1203, description: "Discuss the latest in tech and innovation.", avatarUrl: "https://placehold.co/64x64.png?text=TIF" },
-  { id: "group2", name: "Startup Founders Hub", memberCount: 875, description: "A community for startup founders to share ideas.", avatarUrl: "https://placehold.co/64x64.png?text=SFH" },
-  { id: "group3", name: "NextJS Developers", memberCount: 2450, description: "All things NextJS, React, and web development.", avatarUrl: "https://placehold.co/64x64.png?text=NJD" },
-  { id: "group4", name: "Remote Work Life", memberCount: 560, description: "Tips and tricks for a successful remote career.", avatarUrl: "https://placehold.co/64x64.png?text=RWL" },
-  { id: "group5", name: "AI Enthusiasts Collective", memberCount: 1800, description: "Exploring the frontiers of Artificial Intelligence.", avatarUrl: "https://placehold.co/64x64.png?text=AEC" },
-];
+import type { MockGroup } from "./types"; // Import from new types file
+import { searchTelegramGroups } from "./actions"; // Import server action
 
 export default function GroupsPage() {
   const { toast } = useToast();
@@ -32,22 +18,48 @@ export default function GroupsPage() {
   const [searchResults, setSearchResults] = useState<MockGroup[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [subscribedGroups, setSubscribedGroups] = useState<Set<string>>(new Set());
+  const [searchError, setSearchError] = useState<string | null>(null);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setSearchError(null);
       return;
     }
     setIsLoading(true);
-    // Simulate API call to search Telegram groups
-    setTimeout(() => {
-      const filteredGroups = allMockGroups.filter(group =>
-        group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        group.description.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setSearchResults(filteredGroups);
+    setSearchError(null);
+    try {
+      const results = await searchTelegramGroups(searchQuery);
+      if ('error' in results) {
+        setSearchError(results.error);
+        setSearchResults([]);
+        toast({
+          title: "Errore nella Ricerca",
+          description: results.error,
+          variant: "destructive",
+        });
+      } else {
+        setSearchResults(results);
+        if (results.length === 0) {
+           toast({
+            title: "Nessun Risultato",
+            description: `Nessun gruppo Telegram trovato per "${searchQuery}". Prova con un'altra ricerca.`,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Search failed:", error);
+      const errorMessage = error instanceof Error ? error.message : "Un errore imprevisto è accaduto durante la ricerca.";
+      setSearchError(errorMessage);
+      setSearchResults([]);
+      toast({
+        title: "Ricerca Fallita",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const handleJoinGroup = (group: MockGroup) => {
@@ -66,7 +78,7 @@ export default function GroupsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Cerca Gruppi su Telegram</CardTitle>
-          <CardDescription>Inserisci nome o parole chiave per trovare gruppi Telegram a cui unirti.</CardDescription>
+          <CardDescription>Inserisci nome o parole chiave per trovare gruppi Telegram a cui unirti. La ricerca effettiva su Telegram non è ancora implementata.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row gap-2">
           <Input
@@ -84,7 +96,31 @@ export default function GroupsPage() {
         </CardContent>
       </Card>
 
-      {searchResults.length > 0 && (
+      {isLoading && (
+        <div className="text-center py-8">
+          <Search className="mx-auto h-12 w-12 animate-pulse text-muted-foreground" />
+          <p className="text-lg text-muted-foreground mt-4">Ricerca in corso...</p>
+        </div>
+      )}
+
+      {!isLoading && searchError && (
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle /> Errore nella Ricerca
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>{searchError}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              La ricerca effettiva tramite API di Telegram non è ancora implementata o potrebbe esserci un problema di configurazione.
+              Per ora, i risultati sono simulati.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && !searchError && searchResults.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {searchResults.map((group) => (
             <Card key={group.id}>
@@ -100,8 +136,8 @@ export default function GroupsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <p className="text-sm text-muted-foreground min-h-[40px]">{group.description}</p>
-                <Button 
-                  onClick={() => handleJoinGroup(group)} 
+                <Button
+                  onClick={() => handleJoinGroup(group)}
                   className="w-full"
                   disabled={subscribedGroups.has(group.id)}
                 >
@@ -120,17 +156,18 @@ export default function GroupsPage() {
         </div>
       )}
 
-      {!isLoading && searchQuery && searchResults.length === 0 && (
+      {!isLoading && !searchError && searchQuery && searchResults.length === 0 && (
         <div className="text-center py-8">
           <p className="text-lg text-muted-foreground">Nessun gruppo Telegram trovato per "{searchQuery}". Prova con un'altra ricerca.</p>
+          <p className="text-sm text-muted-foreground mt-2">(Nota: i risultati della ricerca sono attualmente simulati)</p>
         </div>
       )}
-       {!isLoading && !searchQuery && searchResults.length === 0 && (
+       {!isLoading && !searchError && !searchQuery && searchResults.length === 0 && (
         <div className="text-center py-8">
           <p className="text-lg text-muted-foreground">Inserisci un termine di ricerca per trovare gruppi su Telegram.</p>
+           <p className="text-sm text-muted-foreground mt-2">(Nota: i risultati della ricerca sono attualmente simulati)</p>
         </div>
       )}
     </div>
   );
 }
-
