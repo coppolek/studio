@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Search, Users, CheckCircle, AlertTriangle, Loader2, ExternalLink, Info } from "lucide-react";
 import Image from "next/image";
 import type { MockGroup } from "./types"; 
-import { searchTelegramGroups, joinTelegramGroup } from "./actions"; 
+import { searchTelegramGroups, joinTelegramGroup, getStoredSubscribedGroupIds } from "./actions"; 
 import Link from "next/link";
 
 export default function GroupsPage() {
@@ -19,21 +19,31 @@ export default function GroupsPage() {
   const [searchResults, setSearchResults] = useState<MockGroup[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
-  const [subscribedGroups, setSubscribedGroups] = useState<Set<string>>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem("subscribedTelegramGroups_TelePilot");
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    }
-    return new Set();
-  });
+  const [subscribedGroupIds, setSubscribedGroupIds] = useState<Set<string>>(new Set());
+  const [isLoadingSubscribed, setIsLoadingSubscribed] = useState(true);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [initialSearchDone, setInitialSearchDone] = useState(false);
   
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem("subscribedTelegramGroups_TelePilot", JSON.stringify(Array.from(subscribedGroups)));
+  const fetchSubscribedGroups = useCallback(async () => {
+    setIsLoadingSubscribed(true);
+    try {
+      const ids = await getStoredSubscribedGroupIds();
+      setSubscribedGroupIds(new Set(ids));
+    } catch (error) {
+      console.error("Failed to fetch subscribed groups:", error);
+      toast({
+        title: "Errore nel Caricamento delle Iscrizioni",
+        description: "Impossibile caricare i gruppi a cui sei iscritto da Firestore.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingSubscribed(false);
     }
-  }, [subscribedGroups]);
+  }, [toast]);
+
+  useEffect(() => {
+    fetchSubscribedGroups();
+  }, [fetchSubscribedGroups]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
@@ -81,22 +91,31 @@ export default function GroupsPage() {
 
   const handleJoinGroup = async (group: MockGroup) => {
     setJoiningGroupId(group.id);
-    const response = await joinTelegramGroup(group.id, group.name);
+    const response = await joinTelegramGroup(group); // Passa l'intero oggetto group
     if (response.success) {
-        setSubscribedGroups(prev => new Set(prev).add(group.id));
+        setSubscribedGroupIds(prev => new Set(prev).add(group.id));
         toast({
-          title: "Richiesta Inviata!",
+          title: "Richiesta Inviata e Gruppo Salvato!",
           description: response.message,
         });
     } else {
         toast({
-            title: "Iscrizione Fallita",
+            title: "Operazione Fallita",
             description: response.message,
             variant: "destructive",
         });
     }
     setJoiningGroupId(null);
   };
+
+  if (isLoadingSubscribed) {
+    return (
+      <div className="flex flex-col gap-6 items-center justify-center min-h-[calc(100vh-200px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="text-lg text-muted-foreground">Caricamento iscrizioni da Firestore...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,7 +126,7 @@ export default function GroupsPage() {
           <CardTitle>Cerca Gruppi su Telegram</CardTitle>
           <CardDescription>
             Inserisci nome o parole chiave per trovare gruppi Telegram a cui unirti.
-            Per il funzionamento reale della ricerca tramite API di Telegram, assicurati di aver configurato il Token API del Bot Telegram nelle <Link href="/settings" className="underline hover:text-primary">impostazioni dell'applicazione</Link> e, crucialmente, come variabile d'ambiente <code className="text-xs bg-muted px-0.5 py-0.5 rounded">TELEGRAM_BOT_TOKEN</code> nel file <code className="text-xs bg-muted px-0.5 py-0.5 rounded">.env.local</code> del server.
+            Per il funzionamento reale della ricerca tramite API di Telegram, assicurati di aver configurato il Token API del Bot Telegram nelle <Link href="/settings" className="underline hover:text-primary">impostazioni dell'applicazione</Link> e, crucialmente, come variabile d'ambiente <code className="text-xs bg-muted px-0.5 py-0.5 rounded">TELEGRAM_BOT_TOKEN</code> nel file <code className="text-xs bg-muted px-0.5 py-0.5 rounded">.env.local</code> del server. Le iscrizioni verranno salvate su Firestore.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row gap-2">
@@ -121,7 +140,7 @@ export default function GroupsPage() {
             disabled={isLoading}
           />
           <Button onClick={handleSearch} disabled={isLoading || !searchQuery.trim()}>
-            {isLoading ? (
+            {isLoading && !initialSearchDone ? ( // Mostra 'Ricerca...' solo durante la ricerca effettiva
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Ricerca...
@@ -136,7 +155,7 @@ export default function GroupsPage() {
         </CardContent>
       </Card>
 
-      {isLoading && (
+      {isLoading && initialSearchDone && ( // Mostra loader solo se stiamo effettivamente cercando
         <Card>
             <CardContent className="pt-6 text-center">
                 <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
@@ -180,20 +199,20 @@ export default function GroupsPage() {
                 <Button
                   onClick={() => handleJoinGroup(group)}
                   className="w-full mt-auto"
-                  disabled={subscribedGroups.has(group.id) || joiningGroupId === group.id}
+                  disabled={subscribedGroupIds.has(group.id) || joiningGroupId === group.id}
                 >
                   {joiningGroupId === group.id ? (
                      <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Invio Richiesta...
                       </>
-                  ) : subscribedGroups.has(group.id) ? (
+                  ) : subscribedGroupIds.has(group.id) ? (
                     <>
                       <CheckCircle className="mr-2 h-4 w-4" />
-                      Richiesta Inviata
+                      Iscrizione Registrata
                     </>
                   ) : (
-                    "Iscriviti al Gruppo"
+                    "Iscriviti e Salva"
                   )}
                 </Button>
               </CardContent>
@@ -202,7 +221,7 @@ export default function GroupsPage() {
         </div>
       )}
       
-      {!isLoading && !searchError && initialSearchDone && searchResults.length === 0 && (
+      {!isLoading && !searchError && initialSearchDone && searchResults.length === 0 && searchQuery.trim() && (
          <Card>
           <CardContent className="pt-6 text-center">
             <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -219,12 +238,10 @@ export default function GroupsPage() {
           <CardContent className="pt-6 text-center">
             <Info className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-lg text-muted-foreground">Inserisci un termine di ricerca per trovare gruppi su Telegram.</p>
-            <p className="text-sm text-muted-foreground mt-1">La ricerca verrà effettuata tramite le API di Telegram se il token è configurato correttamente sia nelle <Link href="/settings" className="underline hover:text-primary">impostazioni</Link> che nel file <code className="text-xs bg-muted px-0.5 py-0.5 rounded">.env.local</code> del server.</p>
+            <p className="text-sm text-muted-foreground mt-1">La ricerca verrà effettuata tramite le API di Telegram se il token è configurato correttamente. Le iscrizioni vengono salvate su Firestore.</p>
           </CardContent>
         </Card>
       )}
     </div>
   );
 }
-
-    
