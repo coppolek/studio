@@ -1,5 +1,6 @@
+
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, CalendarClock, BarChart3, Settings, BotMessageSquare } from 'lucide-react';
+import { LayoutDashboard, CalendarClock, BarChart3, Settings, Users2, BotMessageSquare } from 'lucide-react'; // Added Users2
 
 export interface NavItem {
   title: string;
@@ -24,6 +25,11 @@ export const mainNavItems: NavItem[] = [
     title: 'Analytics',
     href: '/analytics',
     icon: BarChart3,
+  },
+  {
+    title: 'Groups', // New item
+    href: '/groups',
+    icon: Users2,
   },
 ];
 
