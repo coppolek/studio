@@ -21,19 +21,12 @@ import { mainNavItems, settingsNavItem } from '@/config/nav';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { LogOut, MessageSquareText, Send } from 'lucide-react'; // Added Send icon
-import { useToast } from "@/hooks/use-toast"; // Added useToast
+import { LogOut, MessageSquareText, Send } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { toast } = useToast();
-
-  const handleTelegramLogin = () => {
-    toast({
-      title: "Login con Telegram",
-      description: "Questa funzionalità non è ancora implementata.",
-    });
-  };
 
   const handleLogout = () => {
     // Placeholder for logout functionality
@@ -111,9 +104,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem>Profilo</DropdownMenuItem>
                 <DropdownMenuItem>Fatturazione</DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/settings">Impostazioni</Link></DropdownMenuItem>
-                <DropdownMenuItem onClick={handleTelegramLogin}>
-                  <Send className="mr-2 h-4 w-4" />
-                  <span>Accedi con Telegram</span>
+                <DropdownMenuItem asChild>
+                  <Link href="/auth/telegram-login" className="flex items-center w-full">
+                    <Send className="mr-2 h-4 w-4" />
+                    <span>Accedi con Telegram</span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout}>
