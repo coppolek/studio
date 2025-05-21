@@ -25,13 +25,13 @@ import {
 } from "@/components/ui/popover";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, Bot, Wand2, Clock, Loader2 } from "lucide-react"; // Added Loader2
+import { CalendarIcon, Bot, Wand2, Clock, Loader2, Info } from "lucide-react";
 import { format } from "date-fns";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { schedulePostAction, type ScheduledPostInput } from "./actions"; // Import the server action
-import { getPostSuggestion } from "@/ai/flows/post-suggestion-flow"; // Import the Genkit flow
+import { schedulePostAction, type ScheduledPostInput, getSubscribedGroupsForScheduler, type SubscribedGroupForScheduler } from "./actions";
+import { getPostSuggestion } from "@/ai/flows/post-suggestion-flow";
 
 const schedulerFormSchema = z.object({
   messageContent: z.string().min(1, "Il contenuto del messaggio non può essere vuoto.").max(4096, "Messaggio troppo lungo."),
@@ -47,18 +47,13 @@ const schedulerFormSchema = z.object({
 
 type SchedulerFormValues = z.infer<typeof schedulerFormSchema>;
 
-// Mock data for groups/channels
-const mockTargets = [
-  { id: "group-1", label: "Tech Enthusiasts HQ (Gruppo)" },
-  { id: "channel-1", label: "Daily News Updates (Canale)" },
-  { id: "group-2", label: "Marketing Wizards (Gruppo)" },
-];
-
 export default function SchedulerPage() {
   const { toast } = useToast();
   const [aiSuggestionText, setAiSuggestionText] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableTargets, setAvailableTargets] = useState<SubscribedGroupForScheduler[]>([]);
+  const [isLoadingTargets, setIsLoadingTargets] = useState(true);
 
   const form = useForm<SchedulerFormValues>({
     resolver: zodResolver(schedulerFormSchema),
@@ -70,6 +65,26 @@ export default function SchedulerPage() {
     },
   });
 
+  useEffect(() => {
+    async function fetchTargets() {
+      setIsLoadingTargets(true);
+      try {
+        const targets = await getSubscribedGroupsForScheduler();
+        setAvailableTargets(targets);
+      } catch (error) {
+        console.error("Failed to fetch subscribed groups for scheduler:", error);
+        toast({
+          title: "Errore Caricamento Target",
+          description: "Impossibile caricare i gruppi/canali sottoscritti.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingTargets(false);
+      }
+    }
+    fetchTargets();
+  }, [toast]);
+
   async function onSubmit(data: SchedulerFormValues) {
     setIsSubmitting(true);
     const [hours, minutes] = data.scheduledAtTime.split(':').map(Number);
@@ -78,7 +93,7 @@ export default function SchedulerPage() {
 
     const postToSave: ScheduledPostInput = {
       messageContent: data.messageContent,
-      targetGroups: data.targetGroups,
+      targetGroups: data.targetGroups, // These are now actual Telegram Chat IDs
       scheduledAt: scheduledDateTime,
       useOptimalTiming: data.useOptimalTiming,
       status: 'pending',
@@ -107,11 +122,16 @@ export default function SchedulerPage() {
     setIsAnalyzing(true);
     setAiSuggestionText(null);
     const currentMessage = form.getValues("messageContent");
-    // For simplicity, we'll pass a generic audience type.
-    // In a real app, you might derive this from selected targetGroups.
-    const targetAudienceDescription = form.getValues("targetGroups").length > 0 
-        ? mockTargets.find(t => t.id === form.getValues("targetGroups")[0])?.label || "un target generico"
-        : "un target generico";
+    const selectedTargetIds = form.getValues("targetGroups");
+    
+    let targetAudienceDescription = "un target generico";
+    if (selectedTargetIds.length > 0) {
+        const selectedTargetNames = selectedTargetIds.map(id => 
+            availableTargets.find(t => t.telegramChatId === id)?.name || id
+        );
+        targetAudienceDescription = `Destinato a: ${selectedTargetNames.join(', ')}`;
+    }
+
 
     if (!currentMessage) {
         toast({ title: "Contenuto Mancante", description: "Scrivi un messaggio prima di chiedere suggerimenti.", variant: "destructive"});
@@ -122,7 +142,7 @@ export default function SchedulerPage() {
     try {
       const suggestions = await getPostSuggestion({ 
         messageContent: currentMessage, 
-        targetAudienceInfo: `Destinato a: ${targetAudienceDescription}`
+        targetAudienceInfo: targetAudienceDescription
       });
       setAiSuggestionText(suggestions.suggestion);
     } catch (error: any) {
@@ -179,44 +199,61 @@ export default function SchedulerPage() {
                     render={() => (
                       <FormItem>
                         <div className="mb-4">
-                          <FormLabel className="text-base">Gruppi/Canali Target</FormLabel>
+                          <FormLabel className="text-base">Gruppi/Canali Target Sottoscritti</FormLabel>
                           <FormDescription>
-                            Seleziona i gruppi o canali a cui inviare questo messaggio.
+                            Seleziona i gruppi o canali (salvati da Firestore) a cui inviare questo messaggio.
                           </FormDescription>
                         </div>
-                        {mockTargets.map((item) => (
-                          <FormField
-                            key={item.id}
-                            control={form.control}
-                            name="targetGroups"
-                            render={({ field }) => {
-                              return (
-                                <FormItem
-                                  key={item.id}
-                                  className="flex flex-row items-start space-x-3 space-y-0"
-                                >
-                                  <FormControl>
-                                    <Checkbox
-                                      checked={field.value?.includes(item.id)}
-                                      onCheckedChange={(checked) => {
-                                        return checked
-                                          ? field.onChange([...(field.value || []), item.id])
-                                          : field.onChange(
-                                              field.value?.filter(
-                                                (value) => value !== item.id
-                                              )
-                                            );
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormLabel className="font-normal">
-                                    {item.label}
-                                  </FormLabel>
-                                </FormItem>
-                              );
-                            }}
-                          />
-                        ))}
+                        {isLoadingTargets ? (
+                            <div className="flex items-center space-x-2">
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                <span>Caricamento target...</span>
+                            </div>
+                        ) : availableTargets.length === 0 ? (
+                             <Alert variant="default" className="bg-muted/50">
+                                <Info className="h-4 w-4" />
+                                <AlertTitle>Nessun Target Disponibile</AlertTitle>
+                                <AlertDescription>
+                                  Non hai ancora "sottoscritto" nessun gruppo dalla pagina <a href="/groups" className="underline hover:text-primary">Gruppi</a>.
+                                  Vai alla pagina Gruppi per cercare e salvare i gruppi a cui vuoi inviare messaggi.
+                                </AlertDescription>
+                            </Alert>
+                        ) : (
+                          availableTargets.map((item) => (
+                            <FormField
+                              key={item.id} // Firestore document ID
+                              control={form.control}
+                              name="targetGroups"
+                              render={({ field }) => {
+                                return (
+                                  <FormItem
+                                    key={item.id}
+                                    className="flex flex-row items-start space-x-3 space-y-0"
+                                  >
+                                    <FormControl>
+                                      <Checkbox
+                                        checked={field.value?.includes(item.telegramChatId)} // Use telegramChatId as the value
+                                        onCheckedChange={(checked) => {
+                                          const currentValues = field.value || [];
+                                          return checked
+                                            ? field.onChange([...currentValues, item.telegramChatId])
+                                            : field.onChange(
+                                                currentValues?.filter(
+                                                  (value) => value !== item.telegramChatId
+                                                )
+                                              );
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormLabel className="font-normal">
+                                      {item.name} (ID: <code className="text-xs">{item.telegramChatId}</code>)
+                                    </FormLabel>
+                                  </FormItem>
+                                );
+                              }}
+                            />
+                          ))
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -254,7 +291,7 @@ export default function SchedulerPage() {
                                 selected={field.value}
                                 onSelect={field.onChange}
                                 disabled={(date) =>
-                                  date < new Date(new Date().setHours(0,0,0,0)) // Disable past dates
+                                  date < new Date(new Date().setHours(0,0,0,0)) 
                                 }
                                 initialFocus
                               />
@@ -343,7 +380,7 @@ export default function SchedulerPage() {
                 </CardContent>
               </Card>
               
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button type="submit" className="w-full" disabled={isSubmitting || isLoadingTargets || (availableTargets.length === 0 && !isLoadingTargets)}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -358,3 +395,4 @@ export default function SchedulerPage() {
     </div>
   );
 }
+
