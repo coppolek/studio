@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -24,23 +25,23 @@ import {
 } from "@/components/ui/popover";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, Bot, Wand2, Clock } from "lucide-react";
+import { CalendarIcon, Bot, Wand2, Clock, Loader2 } from "lucide-react"; // Added Loader2
 import { format } from "date-fns";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-// Assume an AI flow for suggestions is available.
-// import { getPostSuggestions } from "@/ai/flows"; // This is a placeholder
+import { schedulePostAction, type ScheduledPostInput } from "./actions"; // Import the server action
+import { getPostSuggestion } from "@/ai/flows/post-suggestion-flow"; // Import the Genkit flow
 
 const schedulerFormSchema = z.object({
-  messageContent: z.string().min(1, "Message content cannot be empty.").max(4096, "Message is too long."),
+  messageContent: z.string().min(1, "Il contenuto del messaggio non può essere vuoto.").max(4096, "Messaggio troppo lungo."),
   targetGroups: z.array(z.string()).refine((value) => value.some((item) => item), {
-    message: "You have to select at least one group or channel.",
+    message: "Devi selezionare almeno un gruppo o canale.",
   }),
   scheduledAtDate: z.date({
-    required_error: "A date for scheduling is required.",
+    required_error: "È richiesta una data per la pianificazione.",
   }),
-  scheduledAtTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)."),
+  scheduledAtTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato ora non valido (HH:MM)."),
   useOptimalTiming: z.boolean().default(false).optional(),
 });
 
@@ -48,15 +49,16 @@ type SchedulerFormValues = z.infer<typeof schedulerFormSchema>;
 
 // Mock data for groups/channels
 const mockTargets = [
-  { id: "1", label: "Tech Enthusiasts HQ (Group)" },
-  { id: "2", label: "Daily News Updates (Channel)" },
-  { id: "3", label: "Marketing Wizards (Group)" },
+  { id: "group-1", label: "Tech Enthusiasts HQ (Gruppo)" },
+  { id: "channel-1", label: "Daily News Updates (Canale)" },
+  { id: "group-2", label: "Marketing Wizards (Gruppo)" },
 ];
 
 export default function SchedulerPage() {
   const { toast } = useToast();
-  const [aiSuggestions, setAiSuggestions] = useState<string | null>(null);
+  const [aiSuggestionText, setAiSuggestionText] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<SchedulerFormValues>({
     resolver: zodResolver(schedulerFormSchema),
@@ -69,48 +71,78 @@ export default function SchedulerPage() {
   });
 
   async function onSubmit(data: SchedulerFormValues) {
-    // Combine date and time
+    setIsSubmitting(true);
     const [hours, minutes] = data.scheduledAtTime.split(':').map(Number);
     const scheduledDateTime = new Date(data.scheduledAtDate);
     scheduledDateTime.setHours(hours, minutes, 0, 0);
 
-    console.log({ ...data, scheduledDateTime }); // Log combined data
-    toast({
-      title: "Post Scheduled!",
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{`Message for ${data.targetGroups.join(', ')} scheduled for ${format(scheduledDateTime, "PPPp")}.`}</code>
-        </pre>
-      ),
-    });
-    form.reset();
-    setAiSuggestions(null);
+    const postToSave: ScheduledPostInput = {
+      messageContent: data.messageContent,
+      targetGroups: data.targetGroups,
+      scheduledAt: scheduledDateTime,
+      useOptimalTiming: data.useOptimalTiming,
+      status: 'pending',
+    };
+    
+    const result = await schedulePostAction(postToSave);
+
+    if (result.success) {
+      toast({
+        title: "Post Pianificato!",
+        description: `Il tuo post è stato salvato e verrà inviato il ${format(scheduledDateTime, "PPPp")}. ID Post: ${result.postId}`,
+      });
+      form.reset();
+      setAiSuggestionText(null);
+    } else {
+      toast({
+        title: "Errore nella Pianificazione",
+        description: result.message,
+        variant: "destructive",
+      });
+    }
+    setIsSubmitting(false);
   }
 
   async function handleAiSuggestions() {
     setIsAnalyzing(true);
-    setAiSuggestions(null);
+    setAiSuggestionText(null);
     const currentMessage = form.getValues("messageContent");
-    const currentTargets = form.getValues("targetGroups");
+    // For simplicity, we'll pass a generic audience type.
+    // In a real app, you might derive this from selected targetGroups.
+    const targetAudienceDescription = form.getValues("targetGroups").length > 0 
+        ? mockTargets.find(t => t.id === form.getValues("targetGroups")[0])?.label || "un target generico"
+        : "un target generico";
 
-    // Placeholder for AI call
-    // In a real app, you would call your Genkit flow here:
-    // const suggestions = await getPostSuggestions({ message: currentMessage, targets: currentTargets });
-    // setAiSuggestions(suggestions.text);
+    if (!currentMessage) {
+        toast({ title: "Contenuto Mancante", description: "Scrivi un messaggio prima di chiedere suggerimenti.", variant: "destructive"});
+        setIsAnalyzing(false);
+        return;
+    }
     
-    // Mock AI response
-    await new Promise(resolve => setTimeout(resolve, 1500)); 
-    setAiSuggestions(
-        `For "${mockTargets.find(t => t.id === currentTargets[0])?.label || 'selected targets'}", consider posting around 2 PM for higher engagement. \n\nAlternative phrasing: "${currentMessage.length > 10 ? currentMessage.substring(0,10) + '...' : currentMessage} - What are your thoughts?" This might invite more interaction.`
-    );
-    setIsAnalyzing(false);
+    try {
+      const suggestions = await getPostSuggestion({ 
+        messageContent: currentMessage, 
+        targetAudienceInfo: `Destinato a: ${targetAudienceDescription}`
+      });
+      setAiSuggestionText(suggestions.suggestion);
+    } catch (error: any) {
+      console.error("Errore nel ricevere suggerimenti AI:", error);
+      setAiSuggestionText("Errore nel caricare i suggerimenti. Riprova più tardi.");
+       toast({
+        title: "Errore Suggerimenti AI",
+        description: error.message || "Impossibile ottenere suggerimenti in questo momento.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Schedule a Post</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Pianifica un Post</h1>
       </div>
 
       <Form {...form}>
@@ -119,8 +151,8 @@ export default function SchedulerPage() {
             <div className="md:col-span-2 space-y-8">
               <Card>
                 <CardHeader>
-                  <CardTitle>Message Details</CardTitle>
-                  <CardDescription>Craft your message and choose when to send it.</CardDescription>
+                  <CardTitle>Dettagli Messaggio</CardTitle>
+                  <CardDescription>Crea il tuo messaggio e scegli quando inviarlo.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <FormField
@@ -128,10 +160,10 @@ export default function SchedulerPage() {
                     name="messageContent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Message Content</FormLabel>
+                        <FormLabel>Contenuto Messaggio</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="What's on your mind? Your message will be posted here..."
+                            placeholder="Cosa hai in mente? Il tuo messaggio verrà postato qui..."
                             className="min-h-[150px] resize-y"
                             {...field}
                           />
@@ -147,9 +179,9 @@ export default function SchedulerPage() {
                     render={() => (
                       <FormItem>
                         <div className="mb-4">
-                          <FormLabel className="text-base">Target Groups/Channels</FormLabel>
+                          <FormLabel className="text-base">Gruppi/Canali Target</FormLabel>
                           <FormDescription>
-                            Select the groups or channels to post this message to.
+                            Seleziona i gruppi o canali a cui inviare questo messaggio.
                           </FormDescription>
                         </div>
                         {mockTargets.map((item) => (
@@ -196,7 +228,7 @@ export default function SchedulerPage() {
                       name="scheduledAtDate"
                       render={({ field }) => (
                         <FormItem className="flex flex-col">
-                          <FormLabel>Schedule Date</FormLabel>
+                          <FormLabel>Data Pianificazione</FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>
                               <FormControl>
@@ -210,7 +242,7 @@ export default function SchedulerPage() {
                                   {field.value ? (
                                     format(field.value, "PPP")
                                   ) : (
-                                    <span>Pick a date</span>
+                                    <span>Scegli una data</span>
                                   )}
                                   <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                                 </Button>
@@ -237,7 +269,7 @@ export default function SchedulerPage() {
                         name="scheduledAtTime"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Schedule Time (HH:MM)</FormLabel>
+                            <FormLabel>Ora Pianificazione (HH:MM)</FormLabel>
                             <FormControl>
                               <div className="relative">
                                 <Clock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -263,10 +295,10 @@ export default function SchedulerPage() {
                         </FormControl>
                         <div className="space-y-1 leading-none">
                           <FormLabel>
-                            Use AI Optimal Timing (if available)
+                            Usa Tempistica Ottimale AI (se disponibile)
                           </FormLabel>
                           <FormDescription>
-                            Allow AI to adjust posting time for best engagement. Overrides manual time if suggestions are applied.
+                            Permetti all'AI di aggiustare l'ora di invio per il miglior engagement. Sovrascrive l'ora manuale se i suggerimenti vengono applicati.
                           </FormDescription>
                         </div>
                       </FormItem>
@@ -279,43 +311,45 @@ export default function SchedulerPage() {
             <div className="space-y-8">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> AI Suggestions</CardTitle>
-                  <CardDescription>Get AI-powered recommendations to improve your post.</CardDescription>
+                  <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> Suggerimenti AI</CardTitle>
+                  <CardDescription>Ottieni raccomandazioni AI per migliorare il tuo post.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Button type="button" variant="outline" onClick={handleAiSuggestions} disabled={isAnalyzing || !form.watch("messageContent") || form.watch("targetGroups").length === 0} className="w-full">
+                  <Button type="button" variant="outline" onClick={handleAiSuggestions} disabled={isAnalyzing || !form.watch("messageContent")} className="w-full">
                     {isAnalyzing ? (
                         <>
-                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Analyzing...
+                        <Loader2 className="animate-spin -ml-1 mr-3 h-5 w-5" />
+                        Analisi in corso...
                         </>
                     ) : (
                         <>
                         <Wand2 className="mr-2 h-4 w-4" />
-                        Get AI Suggestions
+                        Ottieni Suggerimenti AI
                         </>
                     )}
                   </Button>
-                  {aiSuggestions && (
+                  {aiSuggestionText && (
                      <Alert>
                         <Wand2 className="h-4 w-4" />
-                        <AlertTitle>AI Recommendations</AlertTitle>
+                        <AlertTitle>Raccomandazioni AI</AlertTitle>
                         <AlertDescription className="whitespace-pre-line">
-                          {aiSuggestions}
+                          {aiSuggestionText}
                         </AlertDescription>
                       </Alert>
                   )}
-                  {!aiSuggestions && !isAnalyzing && (
-                    <p className="text-sm text-muted-foreground text-center py-4">Click the button above to get suggestions for your current message and selected targets.</p>
+                  {!aiSuggestionText && !isAnalyzing && (
+                    <p className="text-sm text-muted-foreground text-center py-4">Clicca il pulsante sopra per ottenere suggerimenti per il tuo messaggio e i target selezionati.</p>
                   )}
                 </CardContent>
               </Card>
               
-              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Scheduling..." : "Schedule Post"}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Pianificazione...
+                  </>
+                ) : "Pianifica Post"}
               </Button>
             </div>
           </div>
